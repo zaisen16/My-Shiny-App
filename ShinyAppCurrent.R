@@ -47,7 +47,7 @@ library(ggrepel)
 
   
 # Coloring for pitch types in HV plot-------------------------------------------
-
+  
 TMcolors <- c("4-Seam Fastball" = "black",
               "Cutter" = "purple",
               "Sinker" = "#E50E00",
@@ -89,7 +89,7 @@ ui <- fluidPage(
   mainPanel(
     h3("HV Plot"),
     h5("Pitcher's POV"),
-    plotOutput("HV", width = "100%"),
+    plotOutput("HV"),
     h3("Heatmap"),
     h5("Catcher's POV"),
     plotOutput("Heatmap"),
@@ -109,6 +109,9 @@ ui <- fluidPage(
 
 server <- function(input, output, session){
   
+  
+  
+  # For selectize input(not yet working properly)
     # updateSelectizeInput(session, "names", label = NULL, multiple = FALSE,
                          # choices = unique(Names$Full), server = TRUE)
 
@@ -129,22 +132,10 @@ server <- function(input, output, session){
   # Pulling MLBAM ID of player
   ID <- eventReactive(input$go, Names[Names$Full == input$name, 1])
   
-
-  
   
   # Use mlbam_id and dates to load all baseball savant data
-
-  # dataset <- reactive(scrape_statcast_savant_pitcher(start_date = Date1(),
-  #                                            end_date = Date2(),
-  #                                            pitcherid = ID()) %>%
-  #   mutate(pfx_x = -pfx_x*12) %>% mutate(pfx_z = pfx_z*12) %>%
-  #   filter(!pitch_name == "Intentional Ball", !pitch_name == "Pitch Out",
-  #   !pitch_name == ""))
-    
   
-  
-  
-  # Pulling baseball savant data and filtering the data 
+  # Pulling baseball savant data and also filtering the data 
   # based on batter side input (pitcher facing RHH/LHH)
   
   dataset <- reactive({
@@ -175,7 +166,7 @@ server <- function(input, output, session){
   }
 })
   
-
+  # Creating a seperate dataframe containing average pitch movement(used for p2)
   means <- reactive(dataset() %>% group_by(pitch_name) %>% summarize(
     "avgHorz" = mean(pfx_x),
     "avgVert" = mean(pfx_z),
@@ -193,23 +184,27 @@ server <- function(input, output, session){
     scale_colour_manual(values = TMcolors)
   )
     
+  
+  # HV plot with average movement and ellipses
   p2 <- reactive(ggplot(data = dataset(), aes(pfx_x, pfx_z, color = pitch_name)) + 
     geom_point(alpha = 0.3) +
+    geom_segment(x=-30, xend=30, y=0, yend=0, color = "black") + 
+    geom_segment(x=0, xend=0, y=-30, yend=30, color = "black") +
     geom_point(data = means(), aes(avgHorz, avgVert, fill = pitch_name), 
                size = 5, alpha = 1, shape = 21, color = "black", ) +
     geom_label_repel(data = means(), aes(avgHorz, avgVert, label = label),
                        box.padding = unit(4, "lines")) +
-    geom_segment(x=-30, xend=30, y=0, yend=0, color = "black") + 
-    geom_segment(x=0, xend=0, y=-30, yend=30, color = "black") + 
-    coord_equal(xlim = c(-25, 25), ylim = c(-25, 25)) + 
-    scale_color_manual(values = TMcolors) +
     labs(x = "Horizontal Movement(in.)", y = "Induced Vertical Movement(in.)") + 
     stat_ellipse(data = dataset(), aes(pfx_x, pfx_z, color = pitch_name, fill = pitch_name),
                  geom = "polygon", alpha = 0.5, level = 0.9, type = "t",
                  linetype = "dashed") +
-    scale_fill_manual(values = TMcolors)
+    scale_fill_manual(values = TMcolors) + 
+    scale_color_manual(values = TMcolors) + 
+    coord_equal(xlim = c(-25, 25), ylim = c(-25, 25))
   )
   
+  
+  # Putting p1 and p2 side by side as one plot
   output$HV <- renderPlot(wrap_plots(p1(), p2()))
   
     # Heatmap plot
@@ -226,7 +221,8 @@ server <- function(input, output, session){
   )
   
 
-  # Table visual
+  # Table visuals
+  # Pitch metrics
     output$Table <- render_gt(dataset() %>% group_by(pitch_name) %>%
     summarize(
       UsagePct = round(100*(n()/nrow(dataset())), 1),                      # usage rate
@@ -250,7 +246,7 @@ server <- function(input, output, session){
     ) %>% arrange(desc(UsagePct)) %>% gt() %>% gt_theme_538())
     
     
-    
+    # Plate discipline stats
     output$Table2 <- render_gt(dataset() %>% group_by(pitch_name) %>%
       summarize( 
         UsagePct = round(100*(n()/nrow(dataset())), 1),
