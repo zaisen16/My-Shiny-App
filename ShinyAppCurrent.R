@@ -12,6 +12,10 @@ library(ggrepel)
 
 # Data frame for all player names & IDs----------------------------------------
 
+# All files are from chadwick bureau and can be found at: 
+# https://github.com/chadwickbureau/register
+# Combining all files into one, in order to connect player names to their mlbam ID
+
   people.0 <- read.csv("NameFiles/people-0.csv")
   people.1 <- read.csv("NameFiles/people-1.csv")
   people.2 <- read.csv("NameFiles/people-2.csv")
