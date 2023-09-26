@@ -1,4 +1,4 @@
-
+# Load in all necessary packages
 library(shiny)
 library(baseballr)
 library(tidyverse)
@@ -93,7 +93,7 @@ ui <- fluidPage(
   ),
   mainPanel(
   tabsetPanel(tabPanel(
-    "Pitch Metrics",
+    "Movement & Metrics",
     h3("HV Plot"),
     h5("Pitcher's POV"),
     plotOutput("HV"),
@@ -105,15 +105,21 @@ ui <- fluidPage(
     gt_output("table3")),
   tabPanel("Heatmaps",
    h3("Heatmap, All pitches"),
-    h5("Catcher's POV"),
+    h5("Pitcher's POV"),
     plotOutput("Heatmap"),
     h3("Heatmap, Whiffs"),
     plotOutput("Heatmap2"),
     plotOutput("Heatmap2b"),
     h3("Heatmap, Hard Hit Balls"),
     plotOutput("Heatmap3"),
-    plotOutput(("Heatmap3b"))))
-  )
+    plotOutput(("Heatmap3b"))),
+  tabPanel("Release Point",
+  h3("Release Point Characteristics"),
+  h5("Home Plate View"),
+  gt_output("ReleaseTable"),
+  plotOutput("ReleasePlot"),
+  plotOutput("ReleasePlot2"))
+  ))
 )
 # ------------------------------------------------------------------------------
 
@@ -123,9 +129,17 @@ ui <- fluidPage(
 
 # Server------------------------------------------------------------------------
 
+  
+  
+
+  
+  
 server <- function(input, output, session){
   
   
+  
+  
+  # Loading in player data from Baseball Savant---------------------------------
   
   # For selectize input(not yet working properly)
     # updateSelectizeInput(session, "names", label = NULL, multiple = FALSE,
@@ -159,7 +173,7 @@ server <- function(input, output, session){
         scrape_statcast_savant_pitcher(start_date = Date1(),
                                        end_date = Date2(),
                                        pitcherid = ID()) %>%
-          mutate(pfx_x = -pfx_x*12) %>% mutate(pfx_z = pfx_z*12) %>%
+          mutate(pfx_x = -pfx_x*12, plate_x = -plate_x) %>% mutate(pfx_z = pfx_z*12) %>%
           filter(!pitch_name == "Intentional Ball", !pitch_name == "Pitch Out",
                  !pitch_name == "", !pitch_name == "Other", stand == "R") %>% mutate(kzone = ifelse(c(plate_x >= -0.71 & plate_x <= 0.71 & 
                                                                                 plate_z >= 1.5 & plate_z <= 3.5), 1, 0)) %>% 
@@ -169,7 +183,7 @@ server <- function(input, output, session){
     scrape_statcast_savant_pitcher(start_date = Date1(),
                                    end_date = Date2(),
                                    pitcherid = ID()) %>%
-      mutate(pfx_x = -pfx_x*12) %>% mutate(pfx_z = pfx_z*12) %>%
+      mutate(pfx_x = -pfx_x*12, plate_x = -plate_x) %>% mutate(pfx_z = pfx_z*12) %>%
       filter(!pitch_name == "Intentional Ball", !pitch_name == "Pitch Out",
              !pitch_name == "", !pitch_name == "Other", stand == "L") %>% mutate(kzone = ifelse(c(plate_x >= -0.71 & plate_x <= 0.71 & 
                                                                             plate_z >= 1.5 & plate_z <= 3.5), 1, 0)) %>% 
@@ -179,7 +193,7 @@ server <- function(input, output, session){
     scrape_statcast_savant_pitcher(start_date = Date1(),
                                    end_date = Date2(),
                                    pitcherid = ID()) %>%
-      mutate(pfx_x = -pfx_x*12) %>% mutate(pfx_z = pfx_z*12) %>%
+      mutate(pfx_x = -pfx_x*12, plate_x = -plate_x) %>% mutate(pfx_z = pfx_z*12) %>%
       filter(!pitch_name == "Intentional Ball", !pitch_name == "Pitch Out",
              !pitch_name == "", !pitch_name == "Other") %>% mutate(kzone = ifelse(c(plate_x >= -0.71 & plate_x <= 0.71 & 
                                                             plate_z >= 1.5 & plate_z <= 3.5), 1, 0)) %>% 
@@ -188,10 +202,22 @@ server <- function(input, output, session){
   }
 })
   
+  # ----------------------------------------------------------------------------
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  # Movement & Metrics Tab------------------------------------------------------
+  
   # Creating a seperate dataframe containing average pitch movement(used for p2)
   means <- reactive(dataset() %>% group_by(pitch_name) %>% summarize(
-    "avgHorz" = mean(pfx_x),
-    "avgVert" = mean(pfx_z),
+    "avgHorz" = mean(pfx_x, na.rm = TRUE),
+    "avgVert" = mean(pfx_z, na.rm = TRUE),
     label = paste("(", round(avgVert, 1), "in ,", round(avgHorz, 1), "in)")
   ))
   
@@ -230,21 +256,90 @@ server <- function(input, output, session){
   output$HV <- renderPlot(wrap_plots(p1(), p2()), width = 1200, height = 400)
   
   
+  # Tables
+  
+  # Pitch metrics
+  output$Table <- render_gt(dataset() %>% group_by(pitch_name) %>%
+                              summarize(
+                                Pitches = n(),
+                                UsagePct = percent(n()/nrow(dataset()), accuracy = .1),                      # usage rate
+                                AvgVelo = round(mean(release_speed, na.rm = TRUE),1),            # average velo
+                                "Velo Range (max / min)" = paste(round(max(release_speed),1),    # Max and Min Velo
+                                                                 round(min(release_speed),1), sep = " / "),
+                                AvgSpinRate = round(mean(release_spin_rate, na.rm = TRUE), 0),   # avg spin rate
+                                BU = round((AvgSpinRate/AvgVelo), 1),                            # Bauer Units
+                                "Avg Vert Break" = round(mean(pfx_z, na.rm = TRUE),1),           # avg vert break
+                                "Avg Horz Break" = round(mean(pfx_x, na.rm = TRUE),1)            # avg horz break
+                              ) %>% arrange(desc(Pitches)) %>% gt() %>% gt_theme_538())
+  
+  
+  # Plate discipline stats
+  output$Table2 <- render_gt(dataset() %>% group_by(pitch_name) %>%
+                               summarize( 
+                                 Pitches = n(),
+                                 UsagePct = percent(n()/nrow(dataset()), accuracy = .1),
+                                 "Zone%" = round(100*(sum(kzone == 1)/n()),1),
+                                 "Chase%" = round(100*(sum(kzone == 0 & 
+                                                             c(description == "swinging_strike", description == "foul",
+                                                               description == "hit_into_play"))/
+                                                         sum(kzone == 0)),1),
+                                 "Whiff%" = round(100*(sum(description == "swinging_strike")/
+                                                         sum(description == "swinging_strike",
+                                                             description == "foul",
+                                                             description == "hit_into_play")), 1),
+                                 "InZoneWhiff%" = round(100*sum(kzone == 1 & description == "swinging_strike")
+                                                        /sum(kzone == 1 & c(description == "swinging_strike", 
+                                                                            description == "foul",
+                                                                            description == "hit_into_play")), 1),
+                                 "CalledStrike%" = round(100*(sum(description == "called_strike")/nrow(dataset())),1),
+                                 "CSW%" = round(100*((sum(description == "called_strike") + 
+                                                        sum(description == "swinging_strike"))/n()),1)
+                               ) %>% arrange(desc(Pitches)) %>% gt() %>% gt_theme_538())
+  
+  
+  # Quality of contact/results stats
+  
+  BIP <- reactive(dataset() %>% filter(description == "hit_into_play"))
+  
+  output$table3 <- render_gt(BIP() %>% group_by(pitch_name) %>%
+                               summarize( 
+                                 BBE = n(),
+                                 # UsagePct = percent(n()/nrow(dataset()), accuracy = .1),
+                                 "HH%" = percent(sum(launch_speed >= 95 &                      # Hard Hit Rate
+                                                       description == "hit_into_play"
+                                                     , na.rm = TRUE)/
+                                                   sum(description == "hit_into_play", na.rm = TRUE), accuracy = .1),
+                                 "avg Exit Velo" = round(mean(launch_speed, na.rm = TRUE), 1),
+                                 "avg Launch Angle" = round(mean(launch_angle, na.rm = TRUE), 1),
+                                 BABIP = round((sum(events == "single" | events == "double" | events == "triple" | 
+                                                      events == "home_run")/sum(description == "hit_into_play")), 3)
+                               ) %>% arrange(desc(BBE)) %>% gt() %>% gt_theme_538())
+  
+  # ----------------------------------------------------------------------------
   
   
   
   
+  
+  
+  
+  
+  
+  # Heatmaps Tab----------------------------------------------------------------
     # Heatmap plot of all pitches
   output$Heatmap <- renderPlot(
     ggplot(data = dataset(), aes(plate_x, plate_z), na.rm = TRUE) + 
     facet_wrap(~ pitch_name, nrow = 1) +
-    geom_density_2d_filled(na.rm = TRUE, contour_var = "ndensity", 
-                           show.legend = FALSE, bins = 40) +
+    # geom_density_2d_filled(na.rm = TRUE, contour_var = "ndensity", 
+    #                        show.legend = FALSE, bins = 40) +
+    stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE, show.legend = FALSE) +
+    scale_fill_gradientn(colours = c("blue", "white", "red")) +
     coord_equal(xlim= c(-2,2), ylim = c(-1,5)) + 
     geom_segment(x=-0.71, xend=0.71, y=3.5, yend=3.5, col = "gray") + 
     geom_segment(x=-0.71, xend=0.71, y=1.5, yend=1.5, col = "gray") + 
     geom_segment(x=-0.71, xend=-0.71, y=1.5, yend=3.5, col = "gray") + 
     geom_segment(x=0.71, xend=0.71, y=1.5, yend=3.5, col = "gray") +
+    labs(x = "Horizontal Pitch Location", y = "Vertical Pitch Location") +
       theme_bw(),
   width = 1200)
   
@@ -257,13 +352,16 @@ server <- function(input, output, session){
   output$Heatmap2 <- renderPlot(
     ggplot(data = whiffs(), aes(plate_x, plate_z), na.rm = TRUE) + 
       facet_wrap(~ pitch_name, nrow = 1) +
-      geom_density_2d_filled(na.rm = TRUE, contour_var = "ndensity", 
-                             show.legend = FALSE, bins = 40) +
+      # geom_density_2d_filled(na.rm = TRUE, contour_var = "ndensity", 
+      #                        show.legend = FALSE, bins = 40) +
+      stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE, show.legend = FALSE) +
+      scale_fill_gradientn(colours = c("blue", "white", "red")) +
       coord_equal(xlim= c(-2,2), ylim = c(-1,5)) + 
       geom_segment(x=-0.71, xend=0.71, y=3.5, yend=3.5, col = "gray") + 
       geom_segment(x=-0.71, xend=0.71, y=1.5, yend=1.5, col = "gray") + 
       geom_segment(x=-0.71, xend=-0.71, y=1.5, yend=3.5, col = "gray") + 
       geom_segment(x=0.71, xend=0.71, y=1.5, yend=3.5, col = "gray") +
+      labs(x = "Horizontal Pitch Location", y = "Vertical Pitch Location") +
       theme_bw(),
   width = 1200)
   
@@ -278,6 +376,7 @@ server <- function(input, output, session){
       geom_segment(x=-0.71, xend=0.71, y=1.5, yend=1.5, col = "black") + 
       geom_segment(x=-0.71, xend=-0.71, y=1.5, yend=3.5, col = "black") + 
       geom_segment(x=0.71, xend=0.71, y=1.5, yend=3.5, col = "black") +
+      labs(x = "Horizontal Pitch Location", y = "Vertical Pitch Location") +
       theme_bw(),
     width = 1200)
   
@@ -291,13 +390,16 @@ server <- function(input, output, session){
   output$Heatmap3 <- renderPlot(
     ggplot(data = HardHitBalls(), aes(plate_x, plate_z), na.rm = TRUE) + 
       facet_wrap(~ pitch_name, nrow = 1) +
-      geom_density_2d_filled(na.rm = TRUE, contour_var = "ndensity", 
-                             show.legend = FALSE, bins = 40) +
+      # geom_density_2d_filled(na.rm = TRUE, contour_var = "ndensity", 
+      #                        show.legend = FALSE, bins = 40) +
+      stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE, show.legend = FALSE) +
+      scale_fill_gradientn(colours = c("blue", "white", "red")) +
       coord_equal(xlim= c(-2,2), ylim = c(-1,5)) + 
       geom_segment(x=-0.71, xend=0.71, y=3.5, yend=3.5, col = "gray") + 
       geom_segment(x=-0.71, xend=0.71, y=1.5, yend=1.5, col = "gray") + 
       geom_segment(x=-0.71, xend=-0.71, y=1.5, yend=3.5, col = "gray") + 
       geom_segment(x=0.71, xend=0.71, y=1.5, yend=3.5, col = "gray") +
+      labs(x = "Horizontal Pitch Location", y = "Vertical Pitch Location") +
       theme_bw(),
     width = 1200)
   
@@ -312,78 +414,70 @@ server <- function(input, output, session){
       geom_segment(x=-0.71, xend=0.71, y=1.5, yend=1.5, col = "black") + 
       geom_segment(x=-0.71, xend=-0.71, y=1.5, yend=3.5, col = "black") + 
       geom_segment(x=0.71, xend=0.71, y=1.5, yend=3.5, col = "black") +
+      labs(x = "Horizontal Pitch Location", y = "Vertical Pitch Location") +
       theme_bw(),
     width = 1200)
   
+  # ----------------------------------------------------------------------------
   
   
   
   
-  # Tables
   
-  # Pitch metrics
-    output$Table <- render_gt(dataset() %>% group_by(pitch_name) %>%
-    summarize(
+  
+  
+ 
+    
+    # Release Point Tab---------------------------------------------------------
+    
+    # Creating a dataframe with average release point to label release point on plot
+    ReleaseMean <- reactive(dataset() %>% summarize(
+      RelSide = mean(release_pos_x, na.rm = TRUE),
+      RelHeight = mean(release_pos_z, na.rm = TRUE),
+      label = paste("(", round(RelSide, 1), "ft ,", round(RelHeight, 1), "ft)")
+    ))
+    
+    
+    
+    # Home plate view release point plot
+    output$ReleasePlot <- renderPlot(ggplot(dataset(), aes(release_pos_x, release_pos_z)) + 
+      geom_point(aes(color = pitch_name), alpha = 0.3) +
+      geom_point(data = ReleaseMean(), aes(RelSide, RelHeight), size = 5, shape = 21, fill = "grey", color = "black") +
+      geom_label_repel(data = ReleaseMean(), aes(RelSide, RelHeight, label = label),
+                       box.padding = unit(4, "lines")) +
+      coord_equal(xlim = c(-5, 5), ylim = c(0.3, 8)) +
+      labs(x = "Horizontal Release Point", y = "Vertical Release Point") +
+      scale_color_manual(values = TMcolors) + theme_light())
+    
+    # Zoomed in release point, showing each pitch type
+    output$ReleasePlot2 <- renderPlot(ggplot(dataset(), aes(release_pos_x, release_pos_z)) + 
+      stat_ellipse(aes(color = pitch_name, fill = pitch_name), geom = "polygon",
+                       alpha = 0.3, level = 0.9, type = "t", linetype = "dashed") +
+      geom_point(aes(color = pitch_name), alpha = 0.75) +
+      labs(x = "Horizontal Release Point", y = "Vertical Release Point") +
+      scale_color_manual(values = TMcolors) +
+      scale_fill_manual(values = TMcolors) + theme_light())
+    
+    # Table showing release metrics & effective velocity
+    output$ReleaseTable <- render_gt(dataset() %>% group_by(pitch_name) %>% summarize(
       Pitches = n(),
-      UsagePct = percent(n()/nrow(dataset()), accuracy = .1),                      # usage rate
-      AvgVelo = round(mean(release_speed, na.rm = TRUE),1),            # average velo
-      "Velo Range (max / min)" = paste(round(max(release_speed),1),    # Max and Min Velo
-                                       round(min(release_speed),1), sep = " / "),
-      AvgSpinRate = round(mean(release_spin_rate, na.rm = TRUE), 0),   # avg spin rate
-      BU = round((AvgSpinRate/AvgVelo), 1),                            # Bauer Units
-      "Avg Vert Break" = round(mean(pfx_z, na.rm = TRUE),1),           # avg vert break
-      "Avg Horz Break" = round(mean(pfx_x, na.rm = TRUE),1),           # avg horz break
-      Extension = round(mean(release_extension, na.rm = TRUE), 1),     # Extension
+      "Usage%" = percent(n()/nrow(dataset()), accuracy = .1),
+      "Rel
+      Side" = round(mean(release_pos_x, na.rm = TRUE), 1),
+      "Rel
+      Height" = round(mean(release_pos_z, na.rm = TRUE), 1),
+      Extension = round(mean(release_extension, na.rm = TRUE), 1),
       "Effective
-      Velocity" = round(mean(effective_speed, na.rm = TRUE), 1)       # Effective Velocity
-    ) %>% arrange(desc(Pitches)) %>% gt() %>% gt_theme_538())
-    
-    
-    # Plate discipline stats
-    output$Table2 <- render_gt(dataset() %>% group_by(pitch_name) %>%
-      summarize( 
-        Pitches = n(),
-        UsagePct = percent(n()/nrow(dataset()), accuracy = .1),
-        "Zone%" = round(100*(sum(kzone == 1)/n()),1),
-        "Chase%" = round(100*(sum(kzone == 0 & 
-                                    c(description == "swinging_strike", description == "foul",
-                                      description == "hit_into_play"))/
-                                sum(kzone == 0)),1),
-        "Whiff%" = round(100*(sum(description == "swinging_strike")/
-                                sum(description == "swinging_strike",
-                                    description == "foul",
-                                    description == "hit_into_play")), 1),
-        "InZoneWhiff%" = round(100*sum(kzone == 1 & description == "swinging_strike")
-                               /sum(kzone == 1 & c(description == "swinging_strike", 
-                                                   description == "foul",
-                                                   description == "hit_into_play")), 1),
-        "CalledStrike%" = round(100*(sum(description == "called_strike")/nrow(dataset())),1),
-        "CSW%" = round(100*((sum(description == "called_strike") + 
-                               sum(description == "swinging_strike"))/n()),1)
+      Velocity" = round(mean(effective_speed, na.rm = TRUE), 1),
+      Velocity = round(mean(release_speed, na.rm = TRUE), 1)
       ) %>% arrange(desc(Pitches)) %>% gt() %>% gt_theme_538())
-    
-    
-    # Quality of contact/results stats
-    
-    
-    BIP <- reactive(dataset() %>% filter(description == "hit_into_play"))
-    
-    output$table3 <- render_gt(BIP() %>% group_by(pitch_name) %>%
-        summarize( 
-          BBE = n(),
-          # UsagePct = percent(n()/nrow(dataset()), accuracy = .1),
-          "HH%" = percent(sum(launch_speed >= 95 &                      # Hard Hit Rate
-                                   description == "hit_into_play"
-                                 , na.rm = TRUE)/
-                               sum(description == "hit_into_play", na.rm = TRUE), accuracy = .1),
-          "avg Exit Velo" = round(mean(launch_speed, na.rm = TRUE), 1),
-          "avg Launch Angle" = round(mean(launch_angle, na.rm = TRUE), 1),
-          BABIP = round((sum(events == "single" | events == "double" | events == "triple" | 
-                             events == "home_run")/sum(description == "hit_into_play")), 3)
-    ) %>% arrange(desc(BBE)) %>% gt() %>% gt_theme_538())
-
 }
 # ------------------------------------------------------------------------------
   
+  
+  
+  
+  # ----------------------------------------------------------------------------
 
+  
 shinyApp(ui = ui, server = server)
