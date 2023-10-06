@@ -262,10 +262,10 @@ server <- function(input, output, session){
   output$Table <- render_gt(dataset() %>% group_by(pitch_name) %>%
                               summarize(
                                 Pitches = n(),
-                                UsagePct = percent(n()/nrow(dataset()), accuracy = .1),                      # usage rate
+                                UsagePct = percent(n()/nrow(dataset()), accuracy = .1),          # usage rate
                                 AvgVelo = round(mean(release_speed, na.rm = TRUE),1),            # average velo
-                                "Velo Range (max / min)" = paste(round(max(release_speed),1),    # Max and Min Velo
-                                                                 round(min(release_speed),1), sep = " / "),
+                                "Velo Range (max / min)" = paste(round(max(release_speed, na.rm = TRUE),1),    # Max and Min Velo
+                                                                 round(min(release_speed, na.rm = TRUE),1), sep = " / "),
                                 AvgSpinRate = round(mean(release_spin_rate, na.rm = TRUE), 0),   # avg spin rate
                                 BU = round((AvgSpinRate/AvgVelo), 1),                            # Bauer Units
                                 "Avg Vert Break" = round(mean(pfx_z, na.rm = TRUE),1),           # avg vert break
@@ -311,8 +311,10 @@ server <- function(input, output, session){
                                                    sum(description == "hit_into_play", na.rm = TRUE), accuracy = .1),
                                  "avg Exit Velo" = round(mean(launch_speed, na.rm = TRUE), 1),
                                  "avg Launch Angle" = round(mean(launch_angle, na.rm = TRUE), 1),
-                                 BABIP = round((sum(events == "single" | events == "double" | events == "triple" | 
-                                                      events == "home_run")/sum(description == "hit_into_play")), 3)
+                                 BABIP = round((sum(events == "single" | events == "double" | events == "triple")/
+                                                sum(events == "single" | events == "double" | events == "triple",
+                                                    events == "field_out" | events == "force_out" | events == "grounded_into_double_play",
+                                                    events == "sac_fly" | events == "field_error")), 3)
                                ) %>% arrange(desc(BBE)) %>% gt() %>% gt_theme_538())
   
   # ----------------------------------------------------------------------------
