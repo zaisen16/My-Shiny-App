@@ -238,7 +238,7 @@ server <- function(input, output, session){
     # geom_point(alpha = 0.3) +
     geom_segment(x=-30, xend=30, y=0, yend=0, color = "black") + 
     geom_segment(x=0, xend=0, y=-30, yend=30, color = "black") +
-    labs(x = "Horizontal Movement(in.)", y = "Induced Vertical Movement(in.)") + 
+    labs(x = "Horizontal Break(in.)", y = "Induced Vertical Break(in.)") + 
     stat_ellipse(data = dataset(), aes(pfx_x, pfx_z, color = pitch_name, fill = pitch_name),
                  geom = "polygon", alpha = 0.5, level = 0.9, type = "t",
                  linetype = "dashed") +
