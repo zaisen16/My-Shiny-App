@@ -48,6 +48,8 @@ library(GeomMLBStadiums)
   
   # Column for full names
   Names$Full <- paste(Names$name_first, Names$name_last, sep = " ")
+  Names <- Names[c(-21218, -4103, -9526, -9614, -11148, -20530, -24049, -24970,
+                   -792,  -6699, -10187, -10811, -12970, -22658, -23312), ]
 
 # -----------------------------------------------------------------------------
 
@@ -55,7 +57,7 @@ library(GeomMLBStadiums)
   
 # Coloring for pitch types & spray charts-------------------------------------------
   
-TMcolors <- c("4-Seam Fastball" = "black",
+TMcolors <- c("4-Seam Fastball" = "#8E8E8E",
               "Cutter" = "purple",
               "Sinker" = "#E50E00",
               "Slider" = "#4595FF",
@@ -244,7 +246,7 @@ server <- function(input, output, session){
                    geom_segment(x=-30, xend=30, y=0, yend=0, color = "black") +
                    geom_segment(x=0, xend=0, y=-30, yend=30, color = "black") +
                    coord_equal(xlim = c(-25, 25), ylim = c(-25, 25)) +
-                   geom_point(aes(fill = pitch_name), shape = 21, color = "black", size = 2) +
+                   geom_point(aes(fill = pitch_name), shape = 21, color = "black", size = 2.75) +
                    labs(x = "Horizontal Movement(in.)", y = "Induced Vertical Movement(in.)") +
                    scale_fill_manual(values = TMcolors) + theme_light()
                    , height = 400)
@@ -305,28 +307,28 @@ server <- function(input, output, session){
                                summarize( 
                                  Pitches = n(),
                                  UsagePct = percent(n()/nrow(dataset()), accuracy = .1),
-                                 "Zone%" = round(100*(sum(kzone == 1)/n()),1),
+                                 "Zone%" = percent((sum(kzone == 1, na.rm = TRUE)/n()), accuracy = .1),
                                  "Strike%" = percent(sum(kzone == 1 | description == "swinging_strike" | description == "foul" | description == "hit_into_play" | description == "swinging_strike_blocked", na.rm = TRUE)/
                                                        n(), accuracy = .1),
-                                 "Chase%" = round(100*(sum(kzone == 0 & 
+                                 "Chase%" = percent((sum(kzone == 0 & 
                                                              c(description == "swinging_strike", description == "foul",
-                                                               description == "hit_into_play", description == "swinging_strike_blocked"))/
-                                                         sum(kzone == 0)),1),
-                                 "Whiff%" = round(100*(sum(description == "swinging_strike", 
-                                                           description == "swinging_strike_blocked")/
+                                                               description == "hit_into_play", description == "swinging_strike_blocked"), na.rm = TRUE)/
+                                                         sum(kzone == 0)), accuracy = .1),
+                                 "Whiff%" = percent((sum(description == "swinging_strike", 
+                                                           description == "swinging_strike_blocked", na.rm = TRUE)/
                                                          sum(description == "swinging_strike",
                                                              description == "foul",
                                                              description == "hit_into_play",
-                                                             description == "swinging_strike_blocked")), 1),
-                                 "InZoneWhiff%" = round(100*sum(kzone == 1 & c(description == "swinging_strike" | description == "swinging_strike_blocked"))
+                                                             description == "swinging_strike_blocked", na.rm = TRUE)), accuracy = .1),
+                                 "InZoneWhiff%" = percent(sum(kzone == 1 & c(description == "swinging_strike" | description == "swinging_strike_blocked"), na.rm = TRUE)
                                                         /sum(kzone == 1 & c(description == "swinging_strike", 
                                                                             description == "foul",
                                                                             description == "hit_into_play",
-                                                                            description == "swinging_strike_blocked")), 1),
-                                 "CalledStrike%" = round(100*(sum(description == "called_strike")/nrow(dataset())),1),
-                                 "CSW%" = round(100*((sum(description == "called_strike",
+                                                                            description == "swinging_strike_blocked"), na.rm = TRUE), accuracy = .1),
+                                 "CalledStrike%" = percent((sum(description == "called_strike", na.rm = TRUE)/nrow(dataset())), accuracy = .1),
+                                 "CSW%" = percent(((sum(description == "called_strike",
                                                           description == "swinging_strike",
-                                                          description == "swinging_strike_blocked"))/n()),1)
+                                                          description == "swinging_strike_blocked", na.rm = TRUE))/n()), accuracy = .1)
                                ) %>% arrange(desc(Pitches)) %>% gt() %>% gt_theme_538())
   
   
@@ -591,29 +593,29 @@ server <- function(input, output, session){
   output$Table4 <- render_gt(dataset() %>%
                                summarize(
                                  Pitches = n(),
-                                 "Zone%" = percent((sum(kzone == 1)/n()), accuracy = .1),
+                                 "Zone%" = percent((sum(kzone == 1, na.rm = TRUE)/n()), accuracy = .1),
                                  "Strike%" = percent(sum(kzone == 1 | c(description == "swinging_strike" | description == "foul" | description == "hit_into_play" | description == "swinging_strike_blocked"), na.rm = TRUE)/
                                                        n(), accuracy = .1),
                                  "FPS%" = percent(1-sum(pitch_number == 1 & c(description == "ball" | description == "blocked_ball"), na.rm = TRUE)/sum(pitch_number == 1, na.rm = TRUE), accuracy = .1),
                                  "Chase%" = percent((sum(kzone == 0 &
                                                              c(description == "swinging_strike", description == "foul",
-                                                               description == "hit_into_play", description == "swinging_strike_blocked"))/
+                                                               description == "hit_into_play", description == "swinging_strike_blocked"), na.rm = TRUE)/
                                                          sum(kzone == 0)), accuracy = .1),
                                  "Whiff%" = percent((sum(description == "swinging_strike",
-                                                         description == "swinging_strike_blocked")/
+                                                         description == "swinging_strike_blocked", na.rm = TRUE)/
                                                          sum(description == "swinging_strike",
                                                              description == "foul",
                                                              description == "hit_into_play",
-                                                             description == "swinging_strike_blocked")), accuracy = .1),
-                                 "InZoneWhiff%" = percent(sum(kzone == 1 & c(description == "swinging_strike" | description == "swinging_strike_blocked"))
+                                                             description == "swinging_strike_blocked", na.rm = TRUE)), accuracy = .1),
+                                 "InZoneWhiff%" = percent(sum(kzone == 1 & c(description == "swinging_strike" | description == "swinging_strike_blocked"), na.rm = TRUE)
                                                         /sum(kzone == 1 & c(description == "swinging_strike",
                                                                             description == "foul",
                                                                             description == "hit_into_play",
-                                                                            description == "swinging_strike_blocked")), accuracy = .1),
-                                 "CalledStrike%" = percent((sum(description == "called_strike")/nrow(dataset())), accuracy = .1),
+                                                                            description == "swinging_strike_blocked"), na.rm = TRUE), accuracy = .1),
+                                 "CalledStrike%" = percent((sum(description == "called_strike", na.rm = TRUE)/nrow(dataset())), accuracy = .1),
                                  "CSW%" = percent(((sum(description == "called_strike",
                                                         description == "swinging_strike",
-                                                        description == "swinging_strike_blocked"))/n()), accuracy = .1)
+                                                        description == "swinging_strike_blocked", na.rm = TRUE))/n()), accuracy = .1)
                                ) %>% arrange(desc(Pitches)) %>% gt() %>% gt_theme_538()
                              )
     
