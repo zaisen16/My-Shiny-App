@@ -48,6 +48,7 @@ library(GeomMLBStadiums)
   
   # Column for full names
   Names$Full <- paste(Names$name_first, Names$name_last, sep = " ")
+  # Removing certain rows that have same name as other players
   Names <- Names[c(-21218, -4103, -9526, -9614, -11148, -20530, -24049, -24970,
                    -792,  -6699, -10187, -10811, -12970, -22658, -23312), ]
 
