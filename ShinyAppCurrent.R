@@ -39,25 +39,29 @@ library(GeomMLBStadiums)
 
   # Binding together all above data frames and cleaning
   Names <- rbind(people.0, people.1, people.2, people.3, people.4, people.5,
-               people.6, people.7, people.8, people.9, people.a, people.b,
-               people.c, people.d, people.e, people.f) %>%
-  filter(pro_played_last > 2014) %>% 
-    filter(key_mlbam > 0) %>%
-  select(key_mlbam, name_first, name_last, pro_played_last) %>% na.omit()
+                 people.6, people.7, people.8, people.9, people.a, people.b,
+                 people.c, people.d, people.e, people.f) %>%
+    filter(pro_played_last > 2014) %>% 
+    filter(key_mlbam > 0) %>% filter(!key_bbref_minors == "") %>% 
+    select(key_mlbam, key_bbref, name_first, name_last, pro_played_last) %>% na.omit() %>% arrange(desc(name_last))
 
   
   # Column for full names
   Names$Full <- paste(Names$name_first, Names$name_last, sep = " ")
-  # Removing certain rows that have same name as other players
-  Names <- Names[c(-21218, -4103, -9526, -9614, -11148, -20530, -24049, -24970,
-                   -792,  -6699, -10187, -10811, -12970, -22658, -23312), ]
+  # Removing duplicated names
+  Names <- Names[c(-23016, -23042, -23043, -23048, -23075, -23087, -23093, # Luis Castillo
+                   -1186,                                                  # Ryan Walker
+                   -7457,                                                  # Eury Perez
+                   -18575 -18604, -18605, -18610, -18624, -18696, -18701,  # Luis Garcia
+                   -18496, -18514, -18523), ]
 
 # -----------------------------------------------------------------------------
 
 
   
-# Coloring for pitch types & spray charts-------------------------------------------
+# Miscellaneous----------------------------------------------------------------
   
+# Defining pitch type coloring
 TMcolors <- c("4-Seam Fastball" = "#8E8E8E",
               "Cutter" = "purple",
               "Sinker" = "#E50E00",
@@ -70,18 +74,34 @@ TMcolors <- c("4-Seam Fastball" = "#8E8E8E",
               "Knuckle Curve" = "orange",
               "Screwball" = "#ECE400",
               "Forkball" = "#00F9AC",
-              "Knuckleball" = "grey")
+              "Knuckleball" = "aquamarine")
   
+  # Defining coloring for spray charts
   SprayChartColors <- c("field_out" = "grey",
                         "home_run" = "red",
                         "single" = "green",
                         "double" = "blue",
                         "triple" = "orange")
-  
   bb_type_colors <- c("fly_ball" = "red",
                       "line_drive" = "orange",
                       "ground_ball" = "green",
                       "popup" = "blue")
+  
+  # Function to calculate Vertical Approach Angle
+  VAA <- function(dataset){
+    vy_f <- -sqrt((dataset$vy0^2) - (2 * dataset$ay * (50 - 17/12)))
+    t <- (vy_f - dataset$vy0)/dataset$ay
+    vz_f <- dataset$vz0 + dataset$az*t
+    dataset %>% mutate(VAA = -atan(vz_f/vy_f) * (180/pi))
+  }
+  
+  # Function to calculate Horizontal Approach Angle
+  HAA <- function(dataset){
+    vy_f <- -sqrt((dataset$vy0^2) - (2 * dataset$ay * (50 - 17/12)))
+    t <- (vy_f - dataset$vy0)/dataset$ay
+    vz_f <- dataset$vx0 + dataset$ax*t
+    dataset %>% mutate(HAA = -atan(vz_f/vy_f) * (180/pi))
+  }
 
 # ------------------------------------------------------------------------------
   
@@ -93,10 +113,9 @@ TMcolors <- c("4-Seam Fastball" = "#8E8E8E",
 # UI----------------------------------------------------------------------------
 
 ui <- fluidPage(
-  headerPanel("MLB Pitcher Statcast Data/Analysis"),
+  headerPanel("MLB Pitcher Statcast Data"),
   sidebarPanel(
-    textInput("name", label = "Pitcher Name(First Last)"),
-    # selectizeInput("names", choices = NULL),
+    selectizeInput("select_name", label = "Pitcher Name(First Last)", choices = NULL, selected = NULL),
     actionButton("go", "Enter"),
     width = 3),
   sidebarPanel(
@@ -123,7 +142,7 @@ ui <- fluidPage(
     gt_output(outputId = "Table3")),
   tabPanel("Heatmaps",
     h3("Heatmap, All pitches"),
-    h5("Pitcher's POV"),
+    h5("Pitcher's View"),
     plotOutput(outputId = "Heatmap1"),
     plotOutput(outputId = "Heatmap1b"),
     h3("Heatmap, Whiffs"),
@@ -138,8 +157,13 @@ ui <- fluidPage(
     gt_output(outputId = "ReleaseTable"),
     plotOutput(outputId = "plot1"), 
     plotOutput(outputId = "plot2"),
-  plotOutput(outputId = "ReleasePlot2")),
-  tabPanel("Overall",
+    h3("Vertical Approach Angle"),
+    h5("Pitcher's View"),
+    plotOutput(outputId = "VAA"),
+    h3("Horizontal Approach Angle"),
+    h5("Pitcher's View"),
+    plotOutput(outputId = "HAA")),
+  tabPanel("Totals & Spray Charts",
     h3("Summary"),
     gt_output(outputId = "Table4"),
     gt_output(outputId = "Table5"),
@@ -167,19 +191,26 @@ server <- function(input, output, session){
   
   # Loading in player data from Baseball Savant---------------------------------
   
+  # Server side selectize input, retrieving list of names from Names dataframe
+  updateSelectizeInput(
+    session, 
+    inputId = "select_name", 
+    choices = Names$Full, 
+    server = TRUE
+  )
   
   # Making date input into reactive function
   Date1 <- reactive(input$Date[1])
   Date2 <- reactive(input$Date[2])
   
   
-  # Pulling MLBAM ID of player
-  ID <- eventReactive(input$go, Names[Names$Full == input$name, 1])
+  # Pulling MLBAM ID of player from Names dataframe
+  ID <- eventReactive(input$go, Names[Names$Full == input$select_name, 1])
   
   
   # Use mlbam_id and dates to load all baseball savant data
   
-  # Pulling baseball savant data and also filtering the data 
+  # Pulling baseball savant data and also cleaning the data & defining additional columns 
   # based on batter side input (pitcher facing RHH/LHH)
   
   dataset <- reactive({
@@ -192,8 +223,9 @@ server <- function(input, output, session){
                  !pitch_name == "", !pitch_name == "Other", stand == "R") %>% 
           mutate(kzone = ifelse(c(plate_x >= -0.71 & plate_x <= 0.71 & 
                                   plate_z >= 1.5 & plate_z <= 3.5), 1, 0)) %>% 
+          mutate(Exit_velocity = ifelse(c(description == "hit_into_play" & launch_speed > 95), "> 95mph", "< 95mph")) %>% 
           filter(game_type == "R" | game_type == "F" | game_type == "D" | 
-                   game_type == "L" | game_type == "W") %>% mutate(hc_y == 1*(hc_y-200))
+                   game_type == "L" | game_type == "W") %>% mutate(hc_y == 1*(hc_y-200)) %>% VAA() %>% HAA()
   } else if(input$side == "Left"){
     scrape_statcast_savant_pitcher(start_date = Date1(),
                                    end_date = Date2(),
@@ -202,9 +234,10 @@ server <- function(input, output, session){
       filter(!pitch_name == "Intentional Ball", !pitch_name == "Pitch Out",
              !pitch_name == "", !pitch_name == "Other", stand == "L") %>% 
       mutate(kzone = ifelse(c(plate_x >= -0.71 & plate_x <= 0.71 & 
-                              plate_z >= 1.5 & plate_z <= 3.5), 1, 0)) %>% 
+                              plate_z >= 1.5 & plate_z <= 3.5), 1, 0)) %>%
+      mutate(Exit_velocity = ifelse(c(description == "hit_into_play" & launch_speed > 95), "> 95mph", "< 95mph")) %>%
       filter(game_type == "R" | game_type == "F" | game_type == "D" | 
-               game_type == "L" | game_type == "W") %>% mutate(hc_y == 1*(hc_y-200))
+               game_type == "L" | game_type == "W") %>% mutate(hc_y == 1*(hc_y-200)) %>% VAA() %>% HAA()
   } else {
     scrape_statcast_savant_pitcher(start_date = Date1(),
                                    end_date = Date2(),
@@ -214,8 +247,9 @@ server <- function(input, output, session){
              !pitch_name == "", !pitch_name == "Other") %>% 
       mutate(kzone = ifelse(c(plate_x >= -0.71 & plate_x <= 0.71 & 
                               plate_z >= 1.5 & plate_z <= 3.5), 1, 0)) %>% 
+      mutate(Exit_velocity = ifelse(c(description == "hit_into_play" & launch_speed > 95), "> 95mph", "< 95mph")) %>%
       filter(game_type == "R" | game_type == "F" | game_type == "D" | 
-               game_type == "L" | game_type == "W") %>% mutate(hc_y == 1*(hc_y-200))
+               game_type == "L" | game_type == "W") %>% mutate(hc_y == 1*(hc_y-200)) %>% VAA() %>% HAA()
   }
 })
   
@@ -241,8 +275,8 @@ server <- function(input, output, session){
   )
   )
   
-  # Creating HV plot using dataset dataframe/reactive function
   
+  # Creating HV plot using dataset dataframe/reactive function
   output$p1 <- renderPlot(ggplot(data = dataset(), aes(pfx_x, pfx_z)) +
                    geom_segment(x=-30, xend=30, y=0, yend=0, color = "black") +
                    geom_segment(x=0, xend=0, y=-30, yend=30, color = "black") +
@@ -297,7 +331,9 @@ server <- function(input, output, session){
                                 (Inches)" = round(mean(pfx_z, na.rm = TRUE),1),
                                 # Average HB
                                 "Avg Horz. Break
-                                (Inches)" = round(mean(pfx_x, na.rm = TRUE),1)
+                                (Inches)" = round(mean(pfx_x, na.rm = TRUE),1),
+                                "Vert. Appr. Angle" = round(mean(VAA), 1),
+                                "Horz. Appr. Angle" = round(mean(HAA), 1)
                               ) %>% arrange(desc(Pitches)) %>% gt() %>% gt_theme_538())
   
   
@@ -417,7 +453,7 @@ server <- function(input, output, session){
   # Heatmap for whiffs
   
   # Creating separate dataset with only whiffs, instead of all pitches
-  whiffs <- reactive(dataset() %>% filter(description == "swinging_strike"))
+  whiffs <- reactive(dataset() %>% filter(description %in% c("swinging_strike", "swinging_strike_blocked")))
   
   # Heatmap of whiffs, with density plot
   output$Heatmap2 <- renderPlot(
@@ -463,7 +499,7 @@ server <- function(input, output, session){
   # Heatmap of hard hit balls
   
   # Dataset with all hard hit balls
-  HardHitBalls <- reactive(dataset() %>% filter(launch_speed >= 95))
+  HardHitBalls <- reactive(dataset() %>% filter(launch_speed >= 95 & description == "hit_into_play"))
   
   # Heatmap of hard hit balls, with density plot
   output$Heatmap3 <- renderPlot(
@@ -557,14 +593,39 @@ server <- function(input, output, session){
       , height = 400)
     
     
-    # Zoomed in release point, showing each pitch type
-    output$ReleasePlot2 <- renderPlot(ggplot(dataset(), aes(release_pos_x, release_pos_z)) + 
-      stat_ellipse(aes(color = pitch_name, fill = pitch_name), geom = "polygon",
-                       alpha = 0.3, level = 0.9, type = "t", linetype = "dashed") +
-      geom_point(aes(color = pitch_name), alpha = 0.75) +
-      labs(x = "Horizontal Release Point", y = "Vertical Release Point") +
-      scale_color_manual(values = TMcolors) +
-      scale_fill_manual(values = TMcolors) + theme_light())
+    # Vertical Approach Angle Plot
+    output$VAA <- renderPlot(ggplot(dataset(), aes(plate_x, plate_z), na.rm = TRUE) + 
+                               geom_point(aes(fill = VAA), shape = 21, color = "black", size = 2.5, na.rm = TRUE) + 
+                               facet_wrap(~ pitch_name, nrow = 1) +
+                               scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = -6, n.breaks = 5) + 
+                               coord_equal(xlim= c(-2,2), ylim = c(-0.5,5)) + 
+                               geom_segment(x=-0.71, xend=0.71, y=3.5, yend=3.5, col = "black", alpha = 0.5) + 
+                               geom_segment(x=-0.71, xend=0.71, y=1.5, yend=1.5, col = "black", alpha = 0.5) + 
+                               geom_segment(x=-0.71, xend=-0.71, y=1.5, yend=3.5, col = "black", alpha = 0.5) + 
+                               geom_segment(x=0.71, xend=0.71, y=1.5, yend=3.5, col = "black", alpha = 0.5) +
+                               geom_segment(x=0.236, xend=0.236, y=1.5, yend=3.5, col = "black", linetype = 5, alpha = 0.5) +
+                               geom_segment(x=-0.236, xend=-0.236, y=1.5, yend=3.5, col = "black", linetype = 5, alpha = 0.5) +
+                               geom_segment(x=0.71, xend=-0.71, y=2.167, yend=2.167, col = "black", linetype = 5, alpha = 0.5) +
+                               geom_segment(x=0.71, xend=-0.71, y=2.83, yend=2.83, col = "black", linetype = 5, alpha = 0.5) +
+                               labs(x = "Horizontal Pitch Location", y = "Vertical Pitch Location") +
+                               theme_bw(), width = 1200)
+    
+    # Horizontal Approach Angle Plot
+    output$HAA <- renderPlot(ggplot(dataset(), aes(plate_x, plate_z), na.rm = TRUE) + 
+                               geom_point(aes(fill = HAA), shape = 21, color = "black", size = 2.5, na.rm = TRUE) + 
+                               facet_wrap(~ pitch_name, nrow = 1) +
+                               scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0, n.breaks = 5) + 
+                               coord_equal(xlim= c(-2,2), ylim = c(-0.5,5)) + 
+                               geom_segment(x=-0.71, xend=0.71, y=3.5, yend=3.5, col = "black", alpha = 0.5) + 
+                               geom_segment(x=-0.71, xend=0.71, y=1.5, yend=1.5, col = "black", alpha = 0.5) + 
+                               geom_segment(x=-0.71, xend=-0.71, y=1.5, yend=3.5, col = "black", alpha = 0.5) + 
+                               geom_segment(x=0.71, xend=0.71, y=1.5, yend=3.5, col = "black", alpha = 0.5) +
+                               geom_segment(x=0.236, xend=0.236, y=1.5, yend=3.5, col = "black", linetype = 5, alpha = 0.5) +
+                               geom_segment(x=-0.236, xend=-0.236, y=1.5, yend=3.5, col = "black", linetype = 5, alpha = 0.5) +
+                               geom_segment(x=0.71, xend=-0.71, y=2.167, yend=2.167, col = "black", linetype = 5, alpha = 0.5) +
+                               geom_segment(x=0.71, xend=-0.71, y=2.83, yend=2.83, col = "black", linetype = 5, alpha = 0.5) +
+                               labs(x = "Horizontal Pitch Location", y = "Vertical Pitch Location") +
+                               theme_bw(), width = 1200)
     
     # Table showing release metrics & effective velocity
     output$ReleaseTable <- render_gt(dataset() %>% group_by(pitch_name) %>% summarize(
@@ -589,8 +650,9 @@ server <- function(input, output, session){
   
   
 # Overall Tab-------------------------------------------------------------------
+# Displaying the same metrics as previous page, but in total instead of by pitch type
 
-
+    
   output$Table4 <- render_gt(dataset() %>%
                                summarize(
                                  Pitches = n(),
@@ -620,6 +682,7 @@ server <- function(input, output, session){
                                ) %>% arrange(desc(Pitches)) %>% gt() %>% gt_theme_538()
                              )
     
+    # Overall batted ball data
     output$Table5 <- render_gt(BIP() %>%
                                  summarize( 
                                    BBE = n(),
@@ -645,8 +708,10 @@ server <- function(input, output, session){
                                                         events == "sac_fly" | events == "field_error")), 3)
                                  ) %>% arrange(desc(BBE)) %>% gt() %>% gt_theme_538())
 
+  # Using GeomMLBstadiums package to transform data to be compatible with generic stadium overlay
   SprayCharts <- reactive(mlbam_xy_transformation(data = dataset(), x = "hc_x", y = "hc_y"))
 
+  # Spray Chart with outcomes
   output$SprayChart1 <- renderPlot(
     ggplot(data = SprayCharts(), aes(hc_x_, hc_y_), na.rm = TRUE) +
       coord_equal() +
@@ -658,13 +723,14 @@ server <- function(input, output, session){
       theme_void()
   )
 
+  # Spray chart with batted ball type and hard hits
   output$SprayChart2 <- renderPlot(
     ggplot(data = SprayCharts(), aes(hc_x_, hc_y_), na.rm = TRUE) +
       coord_equal() +
       geom_mlb_stadium(stadium_ids = "generic",
                        stadium_transform_coords = TRUE,
                        stadium_segments = "all") +
-      geom_point(col = "black", shape = 21, size = 2.5, aes(fill = bb_type), na.rm = TRUE) +
+      geom_point(col = "black", shape = 21, aes(fill = bb_type), na.rm = TRUE) +
       scale_fill_manual(values = bb_type_colors) +
       theme_void()
   )
