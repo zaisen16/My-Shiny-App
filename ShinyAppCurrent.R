@@ -43,7 +43,7 @@ library(GeomMLBStadiums)
                  people.c, people.d, people.e, people.f) %>%
     filter(pro_played_last > 2014) %>% 
     filter(key_mlbam > 0) %>% filter(!key_bbref_minors == "") %>% 
-    select(key_mlbam, key_bbref, name_first, name_last, pro_played_last) %>% na.omit() %>% arrange(desc(name_last))
+    select(key_mlbam, key_bbref, name_first, name_last, pro_played_last) %>% na.omit() %>% arrange(name_last)
 
   
   # Column for full names
@@ -730,7 +730,7 @@ server <- function(input, output, session){
       geom_mlb_stadium(stadium_ids = "generic",
                        stadium_transform_coords = TRUE,
                        stadium_segments = "all") +
-      geom_point(col = "black", shape = 21, aes(fill = bb_type), na.rm = TRUE) +
+      geom_point(col = "black", shape = 21, size = 2.5, aes(fill = bb_type), na.rm = TRUE) +
       scale_fill_manual(values = bb_type_colors) +
       theme_void()
   )
